@@ -24,9 +24,13 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/urfave/cli/v2"
 )
+
+var wg sync.WaitGroup
 
 func masksToMap(mask string) (int, bool, error) {
 	list := map[string]int{
@@ -151,13 +155,39 @@ func isCIDRAddr(addr string) bool {
 	return true
 }
 
+func ping(ipAddr string) {
+	defer wg.Done()
+	_, err := exec.Command("ping", ipAddr, "-c 2").Output()
+	if err != nil {
+		fmt.Printf("🔴 %s\n", ipAddr)
+	} else {
+		grepEther := exec.Command("grep", "ether")
+		arp := exec.Command("arp", ipAddr)
+
+		p, _ := arp.StdoutPipe()
+		defer p.Close()
+
+		grepEther.Stdin = p
+
+		arp.Start()
+
+		res, _ := grepEther.Output()
+
+		if string(res) != "" {
+			fmt.Printf("🟢 %s\n└── %s", ipAddr, string(res))
+		} else {
+			fmt.Printf("🟢 %s\n", ipAddr)
+		}
+	}
+}
+
 func main() {
 	var target string
 
 	app := &cli.App{
 		Name:    "scanoip",
 		Usage:   "scan ip network",
-		Version: "v1.0.1",
+		Version: "v1.0.2",
 		Flags: []cli.Flag{
 			&cli.StringFlag{
 				Name:        "network",
@@ -168,6 +198,8 @@ func main() {
 			},
 		},
 		Action: func(c *cli.Context) error {
+			start := time.Now()
+
 			fmt.Printf("\033[38;5;140m    _____                        ________ \n")
 			fmt.Printf("   / ___/_________  ____  ____  /  _/ __ \\\n")
 			fmt.Printf("   \\__ \\/ ___/ __ `/ __ \\/ __ \\ / // /_/ /\n")
@@ -206,34 +238,16 @@ func main() {
 			ip := strings.Split(network.String(), ".")
 			endip, _ := strconv.Atoi(ip[3])
 
-			for i := 1; i <= nbValidAddr-2; i++ {
+			for i := 1; i < nbValidAddr-1; i++ {
 				ip[3] = strconv.Itoa(endip + i)
-				ipaddr := strings.Join(ip, ".")
-				_, err := exec.Command("ping", "-c 2", ipaddr).Output()
-				if err != nil {
-					fmt.Printf("🔴 %s\n", ipaddr)
-					continue
-				}
-				fmt.Printf("🔵 %s\n", ipaddr)
-				grepEther := exec.Command("grep", "ether")
-				arp := exec.Command("arp", ipaddr)
-
-				p, _ := arp.StdoutPipe()
-				defer p.Close()
-
-				grepEther.Stdin = p
-
-				arp.Start()
-
-				res, _ := grepEther.Output()
-
-				if err != nil {
-					log.Fatal(err)
-				}
-				if string(res) != "" {
-					fmt.Printf("└── %s", string(res))
-				}
+				ipAddr := strings.Join(ip, ".")
+				wg.Add(1)
+				go ping(ipAddr)
 			}
+
+			wg.Wait()
+			end := time.Now()
+			fmt.Println(end.Sub(start))
 
 			return nil
 		},
