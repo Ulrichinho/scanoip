@@ -157,7 +157,7 @@ func main() {
 	app := &cli.App{
 		Name:    "scanoip",
 		Usage:   "scan ip network",
-		Version: "v1.0.0",
+		Version: "v1.0.1",
 		Flags: []cli.Flag{
 			&cli.StringFlag{
 				Name:        "network",
@@ -214,6 +214,7 @@ func main() {
 					fmt.Printf("🔴 %s\n", ipaddr)
 					continue
 				}
+				fmt.Printf("🔵 %s\n", ipaddr)
 				grepEther := exec.Command("grep", "ether")
 				arp := exec.Command("arp", ipaddr)
 
@@ -229,7 +230,9 @@ func main() {
 				if err != nil {
 					log.Fatal(err)
 				}
-				fmt.Printf("🔵 %s %s", ipaddr, string(res))
+				if string(res) != "" {
+					fmt.Printf("└── %s", string(res))
+				}
 			}
 
 			return nil
